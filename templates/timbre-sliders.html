@@ -1,0 +1,494 @@
+{% macro timbre_sliders(config) %}
+<style>
+    #timbre-panel {
+        max-width: 720px;
+        margin: 0 auto 1rem;
+        font-family: inherit;
+    }
+
+    .timbre-meta {
+        text-align: center;
+        margin-bottom: 1rem;
+        color: #555;
+        font-size: 0.95rem;
+    }
+
+    .timbre-mode-controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 0.75rem 1.25rem;
+        margin-bottom: 1rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid #d8e0ea;
+        border-radius: 0.5rem;
+        background: #f8fafc;
+    }
+
+    .timbre-mode-controls label {
+        margin: 0;
+        font-weight: 600;
+        color: #444;
+    }
+
+    .timbre-mode-toggle {
+        display: inline-flex;
+        gap: 0.35rem;
+    }
+
+    .timbre-mode-toggle .btn.active {
+        background-color: #3182ce;
+        border-color: #2b6cb0;
+        color: #fff;
+    }
+
+    #timbre-pair-selection {
+        font-size: 0.9rem;
+        color: #555;
+    }
+
+    .timbre-tracks {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 0.55rem;
+    }
+
+    .timbre-track {
+        display: grid;
+        grid-template-columns: 5.5rem 1fr 4.5rem;
+        align-items: center;
+        gap: 0.5rem;
+        border-radius: 0.45rem;
+        padding: 0.15rem 0.35rem;
+        transition: background-color 0.15s ease;
+    }
+
+    .timbre-track-selectable {
+        cursor: pointer;
+    }
+
+    .timbre-track-selectable:hover {
+        background: #edf2f7;
+    }
+
+    .timbre-track-selected {
+        background: #e6f0fb;
+        box-shadow: inset 0 0 0 1px #90cdf4;
+    }
+
+    .timbre-track-label {
+        font-size: 0.85rem;
+        color: #444;
+        text-align: right;
+    }
+
+    .timbre-track-rail {
+        position: relative;
+        height: 2.4rem;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #e8eef5 0%, #dfe8f2 100%);
+        border: 1px solid #c5d0dc;
+        touch-action: none;
+    }
+
+    .timbre-track-rail::before {
+        content: "";
+        position: absolute;
+        left: 0.75rem;
+        right: 0.75rem;
+        top: 50%;
+        height: 2px;
+        background: #b8c5d4;
+        transform: translateY(-50%);
+    }
+
+    .timbre-knob {
+        position: absolute;
+        top: 50%;
+        width: 1.35rem;
+        height: 1.35rem;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2;
+        box-sizing: border-box;
+    }
+
+    .timbre-knob-fixed {
+        background: #4a5568;
+        border: 2px solid #2d3748;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .timbre-knob-free {
+        background: #fff;
+        border: 3px solid #3182ce;
+        cursor: grab;
+        touch-action: none;
+    }
+
+    .timbre-knob-free:active {
+        cursor: grabbing;
+    }
+
+    .timbre-hz {
+        font-size: 0.8rem;
+        color: #666;
+        font-variant-numeric: tabular-nums;
+    }
+
+    #timbre-audio-hint {
+        text-align: center;
+        font-size: 0.9rem;
+        color: #718096;
+        margin-top: 0.5rem;
+    }
+</style>
+
+<div id="timbre-panel">
+    <div class="timbre-meta">
+        Octave stretch ratio: <strong>{{ config.octave_ratio }}:1</strong>
+        &nbsp;|&nbsp;
+        Fundamental: <strong>middle C ({{ config.fundamental_hz | round(1) }} Hz)</strong>
+    </div>
+
+    <div class="timbre-mode-controls">
+        <label>Playback</label>
+        <div class="timbre-mode-toggle btn-group" role="group" aria-label="Playback mode">
+            <button type="button" class="btn btn-outline-primary active" id="mode-full-chord">Full chord</button>
+            <button type="button" class="btn btn-outline-primary" id="mode-pair">Pair</button>
+        </div>
+        <div id="timbre-pair-selection">Pair mode: click a row to choose which partial to hear.</div>
+    </div>
+
+    <div class="timbre-tracks" id="timbre-tracks">
+        {% for n in range(1, config.n_partials + 1) %}
+        <div class="timbre-track timbre-track-selectable" data-partial="{{ n }}" data-track="{{ n - 1 }}">
+            <div class="timbre-track-label">Partial {{ n }}</div>
+            <div class="timbre-track-rail" data-rail="{{ n - 1 }}">
+                <div class="timbre-knob timbre-knob-fixed" data-fixed="{{ n - 1 }}"></div>
+                <div class="timbre-knob timbre-knob-free" data-free="{{ n - 1 }}"></div>
+            </div>
+            <div class="timbre-hz" data-hz="{{ n - 1 }}">— Hz</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div id="timbre-audio-hint">Click or drag any open circle to start audio.</div>
+</div>
+
+<script>
+(function () {
+    const TIMBRE_CONFIG = {
+        octaveRatio: {{ config.octave_ratio }},
+        fundamentalHz: {{ config.fundamental_hz }},
+        fixedHz: {{ config.fixed_hz | tojson }},
+        maxHz: {{ config.max_hz }},
+        nPartials: {{ config.n_partials }},
+        masterGain: 0.35,
+        pairGain: 0.2,
+    };
+
+    function harmonicWeights() {
+        const weights = [];
+        for (let index = 0; index < TIMBRE_CONFIG.nPartials; index++) {
+            weights.push(1 / ((index + 1) * (index + 1)));
+        }
+        return weights;
+    }
+
+    const HARMONIC_WEIGHTS = harmonicWeights();
+    const HARMONIC_WEIGHT_SUM = HARMONIC_WEIGHTS.reduce(function (sum, weight) {
+        return sum + weight;
+    }, 0);
+
+    const rails = Array.from(document.querySelectorAll("[data-rail]"));
+    const trackRows = Array.from(document.querySelectorAll("[data-track]"));
+    const fixedKnobs = Array.from(document.querySelectorAll("[data-fixed]"));
+    const freeKnobs = Array.from(document.querySelectorAll("[data-free]"));
+    const hzLabels = Array.from(document.querySelectorAll("[data-hz]"));
+    const audioHint = document.getElementById("timbre-audio-hint");
+    const modeFullButton = document.getElementById("mode-full-chord");
+    const modePairButton = document.getElementById("mode-pair");
+    const pairSelectionLabel = document.getElementById("timbre-pair-selection");
+
+    const minHz = TIMBRE_CONFIG.fundamentalHz;
+    const maxHz = TIMBRE_CONFIG.maxHz;
+    const hzRange = maxHz - minHz;
+    const railPadding = 0.06;
+    const usableSpan = 1 - 2 * railPadding;
+
+    let audioContext = null;
+    let masterGainNode = null;
+    let freeOscillators = [];
+    let fixedOscillators = [];
+    let freeGainNodes = [];
+    let fixedGainNodes = [];
+    let freeHz = [];
+    let audioStarted = false;
+    let playbackMode = "full";
+    let selectedPartial = 0;
+
+    function hzToFraction(hz) {
+        return railPadding + ((hz - minHz) / hzRange) * usableSpan;
+    }
+
+    function fractionToHz(fraction) {
+        const clamped = Math.max(railPadding, Math.min(1 - railPadding, fraction));
+        return minHz + ((clamped - railPadding) / usableSpan) * hzRange;
+    }
+
+    function setKnobPosition(knob, fraction) {
+        knob.style.left = (fraction * 100) + "%";
+    }
+
+    function formatHz(hz) {
+        return hz.toFixed(1) + " Hz";
+    }
+
+    function minFreeHz(index) {
+        const fixed = TIMBRE_CONFIG.fixedHz[index];
+        return Math.min(maxHz, fixed + 0.01 * hzRange);
+    }
+
+    function initialFreeHz(index) {
+        const fixed = TIMBRE_CONFIG.fixedHz[index];
+        return Math.min(maxHz, fixed + 0.05 * hzRange);
+    }
+
+    function updateHzLabel(index) {
+        hzLabels[index].textContent = formatHz(freeHz[index]);
+    }
+
+    function updatePairSelectionLabel() {
+        pairSelectionLabel.textContent =
+            "Pair mode: listening to partial " + (selectedPartial + 1) + ".";
+    }
+
+    function updateTrackHighlight() {
+        trackRows.forEach(function (row, index) {
+            row.classList.toggle("timbre-track-selected", playbackMode === "pair" && index === selectedPartial);
+        });
+    }
+
+    function setGainImmediate(gainNode, value) {
+        const now = audioContext.currentTime;
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(value, now);
+    }
+
+    function fullChordFreeGain(index) {
+        // 1/n^2 amplitude roll-off for partial n (index + 1), normalized to masterGain.
+        const weight = HARMONIC_WEIGHTS[index];
+        return TIMBRE_CONFIG.masterGain * weight / HARMONIC_WEIGHT_SUM;
+    }
+
+    function updateGainMask() {
+        if (!audioStarted) {
+            return;
+        }
+
+        for (let index = 0; index < TIMBRE_CONFIG.nPartials; index++) {
+            let freeGain = 0;
+            let fixedGain = 0;
+
+            if (playbackMode === "full") {
+                freeGain = fullChordFreeGain(index);
+                fixedGain = 0;
+            } else if (index === selectedPartial) {
+                freeGain = TIMBRE_CONFIG.pairGain;
+                fixedGain = TIMBRE_CONFIG.pairGain;
+            }
+
+            setGainImmediate(freeGainNodes[index], freeGain);
+            setGainImmediate(fixedGainNodes[index], fixedGain);
+        }
+    }
+
+    function setPlaybackMode(mode) {
+        playbackMode = mode;
+        modeFullButton.classList.toggle("active", mode === "full");
+        modePairButton.classList.toggle("active", mode === "pair");
+        pairSelectionLabel.style.visibility = mode === "pair" ? "visible" : "hidden";
+        updateTrackHighlight();
+        updateGainMask();
+    }
+
+    function selectPartial(index) {
+        selectedPartial = index;
+        updatePairSelectionLabel();
+        updateTrackHighlight();
+        if (playbackMode === "pair") {
+            updateGainMask();
+        }
+    }
+
+    function setFreeHz(index, hz, updateAudio) {
+        const minAllowed = minFreeHz(index);
+        freeHz[index] = Math.max(minAllowed, Math.min(maxHz, hz));
+        setKnobPosition(freeKnobs[index], hzToFraction(freeHz[index]));
+        updateHzLabel(index);
+        if (updateAudio && freeOscillators[index]) {
+            freeOscillators[index].frequency.setTargetAtTime(
+                freeHz[index],
+                audioContext.currentTime,
+                0.01
+            );
+        }
+    }
+
+    function initKnobPositions() {
+        TIMBRE_CONFIG.fixedHz.forEach(function (hz, index) {
+            setKnobPosition(fixedKnobs[index], hzToFraction(hz));
+            setFreeHz(index, initialFreeHz(index), false);
+        });
+    }
+
+    function startAudio() {
+        if (audioStarted) {
+            return;
+        }
+        audioStarted = true;
+        audioHint.textContent = "Audio playing — adjust the open circles.";
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        masterGainNode = audioContext.createGain();
+        masterGainNode.gain.value = 1.0;
+        masterGainNode.connect(audioContext.destination);
+
+        for (let index = 0; index < TIMBRE_CONFIG.nPartials; index++) {
+            const freeOscillator = audioContext.createOscillator();
+            const freeGainNode = audioContext.createGain();
+            freeOscillator.type = "sine";
+            freeOscillator.frequency.value = freeHz[index];
+            freeGainNode.gain.value = 0;
+            freeOscillator.connect(freeGainNode);
+            freeGainNode.connect(masterGainNode);
+            freeOscillator.start();
+            freeOscillators.push(freeOscillator);
+            freeGainNodes.push(freeGainNode);
+
+            const fixedOscillator = audioContext.createOscillator();
+            const fixedGainNode = audioContext.createGain();
+            fixedOscillator.type = "sine";
+            fixedOscillator.frequency.value = TIMBRE_CONFIG.fixedHz[index];
+            fixedGainNode.gain.value = 0;
+            fixedOscillator.connect(fixedGainNode);
+            fixedGainNode.connect(masterGainNode);
+            fixedOscillator.start();
+            fixedOscillators.push(fixedOscillator);
+            fixedGainNodes.push(fixedGainNode);
+        }
+
+        updateGainMask();
+    }
+
+    window.stopTimbreAudio = function () {
+        freeOscillators.concat(fixedOscillators).forEach(function (oscillator) {
+            try {
+                oscillator.stop();
+            } catch (error) {
+                // Oscillator may already be stopped.
+            }
+        });
+        freeOscillators = [];
+        fixedOscillators = [];
+        freeGainNodes = [];
+        fixedGainNodes = [];
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+        }
+        masterGainNode = null;
+        audioStarted = false;
+    };
+
+    function pointerFractionFromRail(rail, clientX) {
+        const rect = rail.getBoundingClientRect();
+        return (clientX - rect.left) / rect.width;
+    }
+
+    function attachDragHandlers(knob, index) {
+        const rail = rails[index];
+        let dragging = false;
+
+        function onPointerDown(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            startAudio();
+            dragging = true;
+            knob.setPointerCapture(event.pointerId);
+            onPointerMove(event);
+        }
+
+        function onPointerMove(event) {
+            if (!dragging) {
+                return;
+            }
+            const fraction = pointerFractionFromRail(rail, event.clientX);
+            const fixedFraction = hzToFraction(TIMBRE_CONFIG.fixedHz[index]);
+            const minFraction = fixedFraction + 0.005;
+            const clampedFraction = Math.max(minFraction, Math.min(1 - railPadding, fraction));
+            setFreeHz(index, fractionToHz(clampedFraction), true);
+        }
+
+        function onPointerUp(event) {
+            dragging = false;
+            try {
+                knob.releasePointerCapture(event.pointerId);
+            } catch (error) {
+                // Pointer may already be released.
+            }
+        }
+
+        knob.addEventListener("pointerdown", onPointerDown);
+        knob.addEventListener("pointermove", onPointerMove);
+        knob.addEventListener("pointerup", onPointerUp);
+        knob.addEventListener("pointercancel", onPointerUp);
+    }
+
+    modeFullButton.addEventListener("click", function () {
+        setPlaybackMode("full");
+    });
+
+    modePairButton.addEventListener("click", function () {
+        setPlaybackMode("pair");
+    });
+
+    trackRows.forEach(function (row, index) {
+        row.addEventListener("click", function () {
+            startAudio();
+            if (playbackMode !== "pair") {
+                setPlaybackMode("pair");
+            }
+            selectPartial(index);
+        });
+    });
+
+    initKnobPositions();
+    setPlaybackMode("full");
+    updatePairSelectionLabel();
+    freeKnobs.forEach(function (knob, index) {
+        attachDragHandlers(knob, index);
+    });
+
+    retrieveResponse = function () {
+        const tone_ratios = freeHz.map(function (hz, index) {
+            return hz / TIMBRE_CONFIG.fixedHz[index];
+        });
+        return {
+            rawAnswer: {
+                octave_ratio: TIMBRE_CONFIG.octaveRatio,
+                fundamental_hz: TIMBRE_CONFIG.fundamentalHz,
+                fixed_hz: TIMBRE_CONFIG.fixedHz.slice(),
+                free_hz: freeHz.slice(),
+                tone_ratios: tone_ratios,
+                playback_mode: playbackMode,
+                selected_partial: selectedPartial + 1,
+            },
+        };
+    };
+})();
+</script>
+{% endmacro %}
