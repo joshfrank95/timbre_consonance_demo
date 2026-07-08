@@ -1,0 +1,20 @@
+{
+  "name": "timbre-consonance-demo",
+  "version": "1.0.0",
+  "description": "Single-page timbre consonance interval tuning demo.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.8"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vite": "^8.1.3",
+    "vitest": "^4.1.10"
+  }
+}
